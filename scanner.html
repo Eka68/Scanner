@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>Scanner Logistique Pro</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet" />
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <style>
+    :root { --primary: #04070e; --primary-dark: #168345; --success: #10b981; --warning: #f59e0b; --danger: #ef4444; --dark: #1f2937; --light: #f9fafb; --blue: #007BFF; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Inter', sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; overflow-x: hidden; }
+    .app-container { max-width: 640px; margin: 0 auto; background: white; min-height: 100vh; box-shadow: 0 0 50px rgba(0,0,0,0.2); display: flex; flex-direction: column; }
+    
+    /* Overlay Choix Utilisateur */
+    .user-selection-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+    .user-selection-modal { background: white; border-radius: 16px; padding: 40px 30px; text-align: center; max-width: 90%; width: 350px; }
+    .user-role-btn { width: 100%; padding: 16px; margin-bottom: 12px; border: 2px solid #e5e7eb; border-radius: 12px; background: white; font-size: 1.1rem; font-weight: 600; color: var(--primary); cursor: pointer; transition: all 0.3s ease; display: flex; align-items: center; justify-content: center; gap: 10px; }
+    .user-role-btn:active { background: #e5e7eb; }
+    
+    /* Header et Navigation */
+    .app-header { background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%); color: white; padding: 20px; text-align: center; }
+    .app-header h1 { font-size: 1.5rem; font-weight: 700; margin: 0; display: flex; align-items: center; justify-content: center; gap: 10px; }
+    .tabs-nav { display: flex; background: var(--light); border-bottom: 2px solid #e5e7eb; overflow-x: auto; white-space: nowrap; }
+    .tab-btn { flex: 1; min-width: 80px; padding: 12px 10px; background: none; border: none; font-size: 0.85rem; font-weight: 600; color: #6b7280; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 4px; border-bottom: 3px solid transparent; }
+    .tab-btn.active { color: var(--primary); background: white; border-bottom: 3px solid var(--primary); }
+    .tab-content { display: none; flex-direction: column; flex-grow: 1; }
+    .tab-content.active { display: flex; }
+    
+    /* Badges & Boutons classiques */
+    .status-badge { margin: 15px 0; padding: 15px 20px; border-radius: 12px; text-align: center; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 10px; }
+    .status-badge.online, .status-badge.success { background: #d1fae5; color: #065f46; border: 2px solid var(--success); }
+    .status-badge.error { background: #fee2e2; color: #991b9b; border: 2px solid var(--danger); }
+    
+    .btn-upload { width: 100%; padding: 18px; background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%); color: white; border: none; border-radius: 12px; font-size: 1.1rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 10px; }
+    .btn-upload:disabled { opacity: 0.5; cursor: not-allowed; background: #9ca3af; }
+    
+    #reader { width: 100%; border-radius: 15px; overflow: hidden; border: 3px solid var(--primary); }
+    .scans-list { flex-grow: 1; overflow-y: auto; padding: 15px; }
+    .scan-item { background: white; border-radius: 12px; padding: 15px; margin-bottom: 12px; box-shadow: 0 2px 6px rgba(0,0,0,0.08); border-left: 4px solid var(--primary); display: flex; justify-content: space-between; align-items: center;}
+    .scan-code { font-family: 'Courier New', monospace; font-weight: 700; flex: 1; }
+    .btn-delete { background: var(--danger); color: white; border: none; width: 36px; height: 36px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+
+    /* Panneau d'Actions (Gros boutons BL) */
+    .action-toolbar { display: flex; flex-direction: column; gap: 15px; max-width: 400px; margin: 0 auto; }
+    .btn-action { color: white; border: none; padding: 18px 15px; border-radius: 12px; font-weight: bold; font-size: 1.1rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+    .btn-action i { font-size: 1.5rem; }
+
+    .cooldown-overlay { display: none; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(239, 68, 68, 0.95); color: white; border-radius: 12px; align-items: center; justify-content: center; font-weight: 700; font-size: 1.2rem; z-index: 10; }
+    .cooldown-overlay.active { display: flex; }
+
+    /* ========================================= */
+    /* ZONE D'IMPRESSION (Invisible sur l'écran) */
+    /* ========================================= */
+    #printArea { display: none; }
+
+    /* Règles envoyées à l'imprimante (Bixolon 10x15cm) */
+    @media print {
+      @page {
+        size: 100mm 150mm; /* Format précis pour Bixolon */
+        margin: 0;
+      }
+      body {
+        background: white;
+        margin: 0;
+        padding: 0;
+      }
+      /* On cache toute l'application normale */
+      .app-container, .user-selection-overlay, #errorSound {
+        display: none !important;
+      }
+      /* On affiche uniquement la zone d'impression */
+      #printArea {
+        display: flex !important;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        width: 100mm;
+        height: 150mm;
+        background: white;
+        padding: 10mm;
+        box-sizing: border-box;
+      }
+      #printArea h2 {
+        font-family: Arial, sans-serif;
+        font-size: 24px;
+        margin-bottom: 20px;
+        text-align: center;
+        color: black;
+      }
+      #printArea img {
+        width: 80mm;
+        height: 80mm;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- Modal de sélection de l'utilisateur -->
+  <div id="userSelectionOverlay" class="user-selection-overlay">
+    <div class="user-selection-modal">
+      <h2 style="color: var(--primary); margin-bottom: 20px;"><i class="bi bi-person-badge"></i> Votre rôle</h2>
+      <button class="user-role-btn" data-role="Chauffeur"><i class="bi bi-truck"></i> Chauffeur</button>
+      <button class="user-role-btn" data-role="Cariste"><i class="bi bi-arrow-up-circle"></i> Cariste</button>
+      <button class="user-role-btn" data-role="Bureau"><i class="bi bi-building"></i> Bureau</button>
+    </div>
+  </div>
+  
+  <div class="app-container" id="appContainer" style="display: none;">
+    <!-- En-tête -->
+    <div class="app-header">
+      <h1><i class="bi bi-upc-scan"></i> Scanner Logistique</h1>
+      <div id="currentUserDisplay" style="font-size: 0.8rem; opacity: 0.8; margin-top: 5px;">
+        Utilisateur: <strong id="userName"></strong>
+        <button onclick="changerUtilisateur()" style="background:none; border:none; color:white; text-decoration:underline; margin-left:15px; font-size:0.8rem;">Changer</button>
+      </div>
+    </div>
+    
+    <!-- Navigation des onglets -->
+    <div class="tabs-nav">
+      <button class="tab-btn active" data-tab="flash"><i class="bi bi-lightning-charge-fill"></i> Flash</button>
+      <button class="tab-btn" data-tab="consultation"><i class="bi bi-list-check"></i> Consult</button>
+      <button class="tab-btn" data-tab="end-loading"><i class="bi bi-check-circle"></i> Fin Chgt.</button>
+      <button class="tab-btn" data-tab="actions"><i class="bi bi-box-seam"></i> Livraisons</button>
+    </div>
+    
+    <!-- ONGLET : Flash Scanner -->
+    <div class="tab-content active" id="tab-flash" style="padding: 20px; flex-grow: 1;">
+      <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+        <div style="flex:1; background:#f9fafb; padding:10px; text-align:center; border-radius:10px; font-weight:bold;"><span id="scanCount" style="color:var(--primary); font-size:1.2rem;">0</span> Scans</div>
+        <div style="flex:1; background:#f9fafb; padding:10px; text-align:center; border-radius:10px; font-weight:bold;"><span id="sessionTime" style="color:var(--primary); font-size:1.2rem;">00:00</span></div>
+      </div>
+      
+      <div class="mb-3 mx-auto w-100" style="max-width: 400px;">
+        <label for="deliveryDate" class="form-label fw-bold text-center d-block">Date de livraison prévue:</label>
+        <input type="date" class="form-control text-center" id="deliveryDate">
+      </div>
+      
+      <div style="position:relative; margin-bottom: 20px;">
+        <div id="reader"></div>
+        <div id="cooldownOverlay" class="cooldown-overlay"><i class="bi bi-hourglass-split"></i><span style="margin-left:10px;">Patientez <span id="cooldownTimer">2</span>s</span></div>
+      </div>
+      
+      <div id="status" class="status-badge offline"><i class="bi bi-hourglass-split"></i><span id="statusText">Initialisation...</span></div>
+      <button id="uploadBtn" class="btn-upload" disabled><i class="bi bi-cloud-upload"></i> Envoyer les palettes</button>
+    </div>
+    
+    <!-- ONGLET : Consultation / Liste -->
+    <div class="tab-content" id="tab-consultation" style="background: var(--light); flex-grow: 1;">
+      <div style="padding: 20px; background: white; border-bottom: 2px solid #e5e7eb;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <span><strong id="filteredCount" style="color:var(--primary);">0</strong> palettes</span>
+          <button id="clearAllBtn" class="btn btn-sm btn-danger" disabled><i class="bi bi-trash"></i> Vider</button>
+        </div>
+      </div>
+      <div class="scans-list" id="consultList"></div>
+    </div>
+
+    <!-- ONGLET : Fin de chargement -->
+    <div class="tab-content" id="tab-end-loading" style="padding: 30px 20px; background: var(--light); text-align:center;">
+      <i class="bi bi-info-circle" style="font-size: 2rem; color: var(--primary); margin-bottom:15px;"></i>
+      <p style="color: #6b7280; margin-bottom:20px;">Sélectionnez le transporteur pour valider la fin de chargement.</p>
+      <div class="mb-4 d-flex justify-content-center gap-3">
+        <input type="radio" class="btn-check" name="transportOptions" id="transportAloy" value="Aloy">
+        <label class="btn btn-outline-success px-4" for="transportAloy"><i class="bi bi-truck me-2"></i>Aloy</label>
+        <input type="radio" class="btn-check" name="transportOptions" id="transportDilatek" value="Dilatek">
+        <label class="btn btn-outline-success px-4" for="transportDilatek"><i class="bi bi-truck me-2"></i>Dilatek</label>
+      </div>
+      <button id="endLoadingBtn" class="btn-upload mb-4" disabled><i class="bi bi-check-lg"></i> Fin de chargement</button>
+      <div id="endLoadingStatus"></div>
+    </div>
+
+    <!-- ONGLET : Actions de Livraisons -->
+    <div class="tab-content" id="tab-actions" style="background: var(--light); padding: 30px 20px; text-align: center;">
+      <i class="bi bi-truck" style="font-size: 2.5rem; color: #4f5c78; margin-bottom: 15px; display: block;"></i>
+      <h3 style="color: #4f5c78; margin-bottom: 25px;">Gestion des Livraisons</h3>
+      
+      <div class="action-toolbar">
+        <button class="btn-action" onclick="runRemoteAction('set_today', this)" style="background: linear-gradient(90deg, #007BFF 0%, #3be7ff 100%);">
+          <i class="bi bi-calendar-check"></i> Forcer Date d'Aujourd'hui
+        </button>
+
+        <button class="btn-action" onclick="runRemoteAction('generer_bl', this)" style="background: linear-gradient(90deg, #f59e0b 0%, #fcd34d 100%);">
+          <i class="bi bi-file-earmark-pdf"></i> Générer BL du Jour
+        </button>
+        
+        <button class="btn-action" onclick="runRemoteAction('qr_livraison', this)" style="background: linear-gradient(90deg, #8b5cf6 0%, #c4b5fd 100%);">
+          <i class="bi bi-qr-code"></i> Afficher QR Code
+        </button>
+
+        <button class="btn-action" onclick="runRemoteAction('send_email', this)" style="background: linear-gradient(90deg, #10b981 0%, #34d399 100%);">
+          <i class="bi bi-envelope-paper"></i> Envoyer BL par Mail
+        </button>
+      </div>
+
+      <!-- Conteneur QR Code visuel -->
+      <div id="qrCodeContainer" style="display: none; background: white; padding: 20px; border-radius: 12px; text-align: center; box-shadow: 0 4px 12px rgba(0,0,0,0.1); margin-top: 25px;">
+        <h5 style="color: var(--primary); margin-bottom: 15px;">QR Code du Bon de Livraison</h5>
+        <img id="qrCodeImage" src="" alt="QR Code BL" style="max-width: 100%; height: auto; margin-bottom: 15px; border: 1px solid #e5e7eb; border-radius: 8px;">
+        
+        <!-- Le vrai bouton d'impression -->
+        <button class="btn btn-primary w-100 mb-2" onclick="printQRCode()" style="font-weight: bold; font-size: 1.1rem; padding: 12px;">
+          <i class="bi bi-printer"></i> Imprimer Étiquette (10x15)
+        </button>
+        
+        <button class="btn btn-outline-secondary w-100" onclick="document.getElementById('qrCodeContainer').style.display='none'">Fermer</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Le template physique envoyé à l'imprimante -->
+  <div id="printArea">
+    <h2>BON DE LIVRAISON</h2>
+    <img id="printQrImage" src="" alt="QR Code">
+  </div>
+  
+  <audio id="errorSound"><source src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg" type="audio/ogg"></audio>
+  
+  <script>
+    // ==========================================
+    // CONFIGURATION DES URLS (WEBHOOKS)
+    // ==========================================
+    const WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbxdi6fioB8tARrHE6B9-kk9cZDmuII1t57Ksx52BS5oH15s0lmJzXzqnqqqH3Fid4DT9A/exec';
+    const WEBHOOK_BL_URL = 'https://script.google.com/macros/s/AKfycbx-t_kZGLnPDrk9BbtA_OzG5CgdpG3tKRzgZmZJpLVPLLlL5uYz1riqj4CeRkKRsbqRYQ/exec';
+
+    let scans = [], html5Qrcode = null, sessionStartTime = Date.now(), isInCooldown = false, selectedUser = null;
+    const sessionTimeEl = document.getElementById('sessionTime'), scanCountEl = document.getElementById('scanCount');
+    
+    function playBeep(){ document.getElementById("errorSound").play(); }
+    function playErrorSound() { document.getElementById("errorSound").play(); }
+    setInterval(() => { const e=Math.floor((Date.now()-sessionStartTime)/1e3); sessionTimeEl.textContent=`${String(Math.floor(e/60)).padStart(2,'0')}:${String(e%60).padStart(2,'0')}` }, 1000);
+    
+    // ==========================================
+    // GESTION UI & NAVIGATION
+    // ==========================================
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.tab-btn').forEach(e => e.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(e => { e.classList.remove('active'); e.style.display = 'none'; });
+        btn.classList.add('active');
+        const target = btn.dataset.tab;
+        const content = document.getElementById(`tab-${target}`);
+        content.classList.add('active'); content.style.display = target==='flash'?'flex':'block';
+        if(target === 'consultation') renderConsultation();
+      });
+    });
+
+    // CORRECTION : Forcer la sélection du rôle à chaque fois
+    function initUserSelection(){
+      document.getElementById('appContainer').style.display = 'none';
+      document.getElementById('userSelectionOverlay').style.display = 'flex';
+
+      document.querySelectorAll('.user-role-btn').forEach(b => {
+        b.onclick = function(e) {
+          selectedUser = e.target.dataset.role; 
+          document.getElementById('userSelectionOverlay').style.display = 'none';
+          document.getElementById('appContainer').style.display = 'flex';
+          document.getElementById('userName').textContent = selectedUser;
+          document.getElementById("deliveryDate").valueAsDate = new Date();
+          
+          try{ scans = JSON.parse(localStorage.getItem('offlineScansList')||'[]'); scanCountEl.textContent=scans.length; }catch(err){}
+          initScanner();
+        };
+      });
+    }
+
+    // Fonction pour le bouton "Changer"
+    function changerUtilisateur() {
+      if(html5Qrcode) { html5Qrcode.stop().catch(()=>{}); }
+      initUserSelection();
+    }
+
+    // ==========================================
+    // SCANNER & LISTE
+    // ==========================================
+    function renderConsultation(){
+        const list = document.getElementById('consultList'); list.innerHTML='';
+        if(scans.length===0){ list.innerHTML='<div class="text-center p-5 text-muted">Aucune palette</div>'; document.getElementById('clearAllBtn').disabled=true; return; }
+        document.getElementById('clearAllBtn').disabled=false;
+        document.getElementById('filteredCount').textContent = scans.length;
+        scans.forEach(s => {
+            list.innerHTML += `<div class="scan-item"><div><div class="scan-code">${s.qrCode}</div><div class="text-muted small">${new Date(s.timestamp).toLocaleString()}</div></div><button class="btn-delete" onclick="deleteScan('${s.id}')"><i class="bi bi-trash"></i></button></div>`;
+        });
+    }
+    
+    window.deleteScan = function(id){ scans = scans.filter(s => s.id !== id); localStorage.setItem('offlineScansList',JSON.stringify(scans)); scanCountEl.textContent=scans.length; renderConsultation(); }
+    
+    document.getElementById('clearAllBtn').addEventListener('click', () => { 
+      if(confirm('Tout supprimer ?')) { scans=[]; localStorage.setItem('offlineScansList','[]'); renderConsultation(); scanCountEl.textContent=0;} 
+    });
+
+    async function initScanner() {
+      if (!navigator.mediaDevices) return;
+      try {
+        html5Qrcode = new Html5Qrcode("reader");
+        await html5Qrcode.start({ facingMode: "environment" }, { fps: 10, qrbox: { width: 250, height: 250 } }, (text) => {
+          if(!text || isInCooldown || text.includes('/')||text.includes(':')) return;
+          isInCooldown=true; document.getElementById('cooldownOverlay').classList.add('active'); setTimeout(()=>{isInCooldown=false; document.getElementById('cooldownOverlay').classList.remove('active');}, 4500);
+          
+          const sd = document.getElementById("deliveryDate").value ? new Date(document.getElementById("deliveryDate").value+'T08:00:00').toISOString() : new Date().toISOString();
+          scans.push({ qrCode: text, user: selectedUser, id: Date.now().toString(), timestamp: sd });
+          localStorage.setItem('offlineScansList',JSON.stringify(scans)); 
+          scanCountEl.textContent=scans.length;
+          document.getElementById('uploadBtn').disabled=false; 
+          playBeep();
+        }, ()=>{});
+        document.getElementById('status').className = 'status-badge online'; document.getElementById('statusText').innerHTML = 'Scanner Prêt';
+      } catch (e) { document.getElementById('status').className = 'status-badge error'; document.getElementById('statusText').innerHTML = 'Erreur Caméra'; }
+    }
+
+    // ==========================================
+    // ACTIONS LOGISTIQUES
+    // ==========================================
+    async function autoSetToday() {
+      try { await fetch(WEBHOOK_BL_URL + "?action=set_today", { method: 'GET' }); } catch (e) {}
+    }
+
+    document.getElementById('uploadBtn').addEventListener('click', async () => {
+      if(scans.length===0) return;
+      document.getElementById('uploadBtn').disabled=true;
+      document.getElementById('uploadBtn').innerHTML = '<i class="spinner-border spinner-border-sm"></i> Envoi...';
+      try {
+        await autoSetToday();
+        await fetch(WEBHOOK_URL, { method: 'POST', body: JSON.stringify({ scans: scans }), mode: 'no-cors' });
+        scans=[]; localStorage.setItem('offlineScansList','[]'); scanCountEl.textContent=0;
+        alert("Palettes envoyées avec succès");
+      } catch(e) { alert("Erreur d'envoi"); }
+      document.getElementById('uploadBtn').innerHTML = '<i class="bi bi-cloud-upload"></i> Envoyer les palettes';
+      document.getElementById('uploadBtn').disabled=false;
+    });
+
+    document.getElementById('endLoadingBtn').addEventListener('click', async () => {
+      const t = document.querySelector('input[name="transportOptions"]:checked');
+      if(!t) return;
+      document.getElementById('endLoadingBtn').disabled=true;
+      document.getElementById('endLoadingBtn').innerHTML = '<i class="spinner-border spinner-border-sm"></i> Validation...';
+      try {
+        await autoSetToday();
+        const endScan = { qrCode: `Fin de chargement - ${t.value}`, user: selectedUser, id: Date.now().toString(), timestamp: new Date().toISOString() };
+        await fetch(WEBHOOK_URL, { method: 'POST', body: JSON.stringify({ scans: [endScan] }), mode: 'no-cors' });
+        document.getElementById('endLoadingStatus').innerHTML='<div class="alert alert-success mt-2 fw-bold">Fin de chargement validée !</div>';
+      } catch(e){ alert("Erreur réseau."); }
+      document.getElementById('endLoadingBtn').innerHTML = '<i class="bi bi-check-lg"></i> Fin de chargement';
+    });
+
+    document.querySelectorAll('input[name="transportOptions"]').forEach(r => {
+      r.addEventListener('change', () => { document.getElementById('endLoadingBtn').disabled=false; });
+    });
+
+    async function runRemoteAction(actionName, btnElement) {
+      if(!navigator.onLine) { alert("Connexion requise"); return; }
+      
+      const originalHTML = btnElement.innerHTML;
+      btnElement.innerHTML = '<i class="spinner-border spinner-border-sm"></i> Patientez...';
+      btnElement.disabled = true;
+      document.getElementById('qrCodeContainer').style.display = 'none';
+
+      try {
+        const url = WEBHOOK_BL_URL + "?action=" + encodeURIComponent(actionName);
+        const res = await fetch(url, { method: 'GET' });
+        const json = await res.json();
+        
+        if(json.success) { 
+          if (actionName === 'qr_livraison' && json.qrUrl) {
+            // Assigne l'image pour l'affichage visuel ET pour l'imprimante
+            document.getElementById('qrCodeImage').src = json.qrUrl;
+            document.getElementById('printQrImage').src = json.qrUrl;
+            document.getElementById('qrCodeContainer').style.display = 'block';
+          } else {
+            alert("✅ " + json.message);
+          }
+        } else { 
+          alert("⚠️ " + json.message); 
+          playErrorSound();
+        }
+      } catch (e) { 
+        alert("❌ Erreur de communication."); 
+      }
+      
+      btnElement.innerHTML = originalHTML;
+      btnElement.disabled = false;
+    }
+
+    // ==========================================
+    // IMPRESSION DIRECTE NATIVE
+    // ==========================================
+    function printQRCode() {
+      // Lance la fenêtre d'impression native du téléphone.
+      // Le CSS @media print s'occupe de formater l'écran en 10x15
+      window.print();
+    }
+
+    window.addEventListener('load', initUserSelection);
+  </script>
+</body>
+</html>
